@@ -3,12 +3,16 @@ package slackhappy
 import (
 	"bytes"
 	"context"
+	"contrib.go.opencensus.io/exporter/stackdriver"
 	"encoding/json"
 	"fmt"
 	"github.com/CedricFinance/slackhappy/bamboohr"
 	"github.com/CedricFinance/slackhappy/internal"
 	"github.com/nlopes/slack"
+	"go.opencensus.io/plugin/ochttp"
+	"go.opencensus.io/trace"
 	"log"
+	"net/http"
 	"os"
 	"time"
 )
@@ -21,6 +25,8 @@ type Request struct {
 var anniversariesWisher *internal.Wisher
 var birthdaysWisher *internal.Wisher
 var employeesRepository internal.EmployeeRepository
+
+var exporter *stackdriver.Exporter
 
 func MustEnv(name string) string {
 	value := os.Getenv(name)
@@ -40,7 +46,7 @@ func init() {
 
 	fmt.Printf("%+v", os.Environ())
 
-	slackClient := slack.New(slackToken)
+	slackClient := slack.New(slackToken, slack.OptionHTTPClient(&http.Client{Transport: &ochttp.Transport{}}))
 
 	slackNotifier := &internal.SlackNotifier{
 		SlackClient: slackClient,
@@ -69,9 +75,30 @@ func init() {
 		Client: bamboohr.New(
 			bambooDomain,
 			bambooToken,
+			bamboohr.OptionHttpClient(&http.Client{Transport: &ochttp.Transport{}}),
 		),
 	}
 
+	initTracing()
+}
+
+func initTracing() {
+	var err error
+
+	projectID := MustEnv("GCP_PROJECT")
+
+	exporter, err = stackdriver.NewExporter(stackdriver.Options{
+		ProjectID: projectID,
+		OnError: func(err error) {
+			fmt.Printf("Exporter error: %q", err)
+		},
+	})
+	if err != nil {
+		log.Panic(err)
+	}
+
+	trace.RegisterExporter(exporter)
+	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
 }
 
 type PubSubMessage struct {
@@ -79,6 +106,10 @@ type PubSubMessage struct {
 }
 
 func OnPubSubMessage(ctx context.Context, message PubSubMessage) error {
+	ctx, span := trace.StartSpan(ctx, "HappyTrigger")
+	defer span.End()
+	defer exporter.Flush()
+
 	var request Request
 	decoder := json.NewDecoder(bytes.NewReader(message.Data))
 	err := decoder.Decode(&request)
