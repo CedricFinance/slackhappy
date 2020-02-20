@@ -16,7 +16,9 @@ func main() {
 		err = slackhappy.OnPubSubMessage(request.Context(), slackhappy.PubSubMessage{
 			Data: payload,
 		})
-		log.Printf("failed to process the PubSub message: %q", err)
+		if err != nil {
+			log.Printf("failed to process the PubSub message: %s", err)
+		}
 	})
 	log.Fatal(http.ListenAndServe("0.0.0.0:8889", nil))
 }

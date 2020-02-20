@@ -28,7 +28,7 @@ func (b *BambooRepository) List(ctx context.Context) []Employee {
 
 		hireDate, err := time.Parse("2006-01-02", employee["hireDate"])
 		if err != nil {
-			fmt.Printf("invalid hireDate %q", employee["hireDate"])
+			fmt.Printf("invalid hireDate %q\n", employee["hireDate"])
 			continue
 		}
 

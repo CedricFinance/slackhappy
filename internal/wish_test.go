@@ -32,7 +32,7 @@ func TestWisher_Wish_EmptyMessage(t *testing.T) {
 		Notifier:     nil,
 	}
 
-	result, err := wisher.Wish(context.Background(), time.Now(), employees)
+	result, err := wisher.Wish(context.Background(), time.Now(), employees, false)
 
 	assert.Nil(t, err)
 	assert.Equal(t, "Empty", result)
@@ -49,7 +49,7 @@ func TestWisher_Wish_All(t *testing.T) {
 		Notifier:     fakeNotifier,
 	}
 
-	result, err := wisher.Wish(context.Background(), time.Now(), employees)
+	result, err := wisher.Wish(context.Background(), time.Now(), employees, false)
 
 	assert.Nil(t, err)
 	assert.Equal(t, "Prefix Emily Brow, John Doe, Stephanie Wilson Suffix", result)
@@ -67,9 +67,27 @@ func TestWisher_Wish_Birthdays(t *testing.T) {
 		Notifier:     fakeNotifier,
 	}
 
-	result, err := wisher.Wish(context.Background(), MustParseTime("2006-01-02", "2020-03-14"), employees)
+	result, err := wisher.Wish(context.Background(), MustParseTime("2006-01-02", "2020-03-14"), employees, false)
 
 	assert.Nil(t, err)
 	assert.Equal(t, "Prefix Emily Brow, Stephanie Wilson Suffix", result)
 	assert.Equal(t, "Prefix Emily Brow, Stephanie Wilson Suffix", fakeNotifier.Message)
+}
+
+func TestWisher_Wish_Birthdays_DryRun(t *testing.T) {
+	fakeNotifier := &FakeNotifier{}
+	wisher := Wisher{
+		FilterPredicate: func(employee Employee, date time.Time) bool {
+			return employee.IsBirthday(date)
+		},
+		Formatter:    SimpleFormatter{Prefix: "Prefix", Suffix: "Suffix"},
+		EmptyMessage: "Empty",
+		Notifier:     fakeNotifier,
+	}
+
+	result, err := wisher.Wish(context.Background(), MustParseTime("2006-01-02", "2020-03-14"), employees, true)
+
+	assert.Nil(t, err)
+	assert.Equal(t, "Prefix Emily Brow, Stephanie Wilson Suffix", result)
+	assert.Equal(t, "", fakeNotifier.Message)
 }

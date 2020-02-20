@@ -20,6 +20,7 @@ import (
 type Request struct {
 	Birthdays     bool
 	Anniversaries bool
+	DryRun        bool
 }
 
 var anniversariesWisher *internal.Wisher
@@ -43,8 +44,6 @@ func init() {
 	slackToken := MustEnv("SLACK_TOKEN")
 	bambooDomain := MustEnv("BAMBOOHR_DOMAIN")
 	bambooToken := MustEnv("BAMBOOHR_TOKEN")
-
-	fmt.Printf("%+v", os.Environ())
 
 	slackClient := slack.New(slackToken, slack.OptionHTTPClient(&http.Client{Transport: &ochttp.Transport{}}))
 
@@ -85,7 +84,11 @@ func init() {
 func initTracing() {
 	var err error
 
-	projectID := MustEnv("GCP_PROJECT")
+	projectID := os.Getenv("GCP_PROJECT")
+
+	if projectID == "" {
+		return
+	}
 
 	exporter, err = stackdriver.NewExporter(stackdriver.Options{
 		ProjectID: projectID,
@@ -108,7 +111,9 @@ type PubSubMessage struct {
 func OnPubSubMessage(ctx context.Context, message PubSubMessage) error {
 	ctx, span := trace.StartSpan(ctx, "HappyTrigger")
 	defer span.End()
-	defer exporter.Flush()
+	if exporter != nil {
+		defer exporter.Flush()
+	}
 
 	var request Request
 	decoder := json.NewDecoder(bytes.NewReader(message.Data))
@@ -121,7 +126,7 @@ func OnPubSubMessage(ctx context.Context, message PubSubMessage) error {
 	employees := employeesRepository.List(ctx)
 
 	if request.Birthdays {
-		message, err := birthdaysWisher.Wish(ctx, currentDate, employees)
+		message, err := birthdaysWisher.Wish(ctx, currentDate, employees, request.DryRun)
 		if err != nil {
 			log.Print("Failed to wish birthdays")
 			return err
@@ -130,7 +135,7 @@ func OnPubSubMessage(ctx context.Context, message PubSubMessage) error {
 	}
 
 	if request.Anniversaries {
-		message, err := anniversariesWisher.Wish(ctx, currentDate, employees)
+		message, err := anniversariesWisher.Wish(ctx, currentDate, employees, request.DryRun)
 		if err != nil {
 			log.Print("Failed to wish anniversaries")
 			return err

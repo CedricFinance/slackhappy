@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"time"
 )
@@ -14,7 +15,7 @@ type Wisher struct {
 	Notifier        Notifier
 }
 
-func (w Wisher) Wish(ctx context.Context, date time.Time, employees []Employee) (string, error) {
+func (w Wisher) Wish(ctx context.Context, date time.Time, employees []Employee, dryRun bool) (string, error) {
 	filtered := Filter(employees, func(employee Employee) bool {
 		return w.FilterPredicate(employee, date)
 	})
@@ -27,9 +28,14 @@ func (w Wisher) Wish(ctx context.Context, date time.Time, employees []Employee) 
 
 	message := w.Formatter.Format(names)
 
-	err := w.Notifier.Notify(ctx, message)
-	if err != nil {
-		return "", err
+	if dryRun {
+		log.Println("Dry-run: no message sent")
+	} else {
+		log.Printf("Sending message: %q", message)
+		err := w.Notifier.Notify(ctx, message)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	return message, nil
