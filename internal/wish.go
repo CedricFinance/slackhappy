@@ -2,9 +2,7 @@ package internal
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"sort"
 	"time"
 )
 
@@ -24,9 +22,7 @@ func (w Wisher) Wish(ctx context.Context, date time.Time, employees []Employee, 
 		return w.EmptyMessage, nil
 	}
 
-	names := GetNames(filtered)
-
-	message := w.Formatter.Format(names)
+	message := w.Formatter.Format(filtered)
 
 	if dryRun {
 		log.Println("Dry-run: no message sent")
@@ -39,15 +35,6 @@ func (w Wisher) Wish(ctx context.Context, date time.Time, employees []Employee, 
 	}
 
 	return message, nil
-}
-
-func GetNames(employees []Employee) []string {
-	var names []string
-	for _, employee := range employees {
-		names = append(names, fmt.Sprintf("%s %s", employee.FirstName, employee.LastName))
-	}
-	sort.Strings(names)
-	return names
 }
 
 func Filter(employees []Employee, predicate func(employee Employee) bool) []Employee {

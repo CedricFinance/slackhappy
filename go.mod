@@ -1,6 +1,6 @@
 module github.com/CedricFinance/slackhappy
 
-go 1.13
+go 1.16
 
 require (
 	contrib.go.opencensus.io/exporter/stackdriver v0.13.0

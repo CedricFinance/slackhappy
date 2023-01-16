@@ -1,147 +1,147 @@
 package slackhappy
 
 import (
-	"bytes"
-	"context"
-	"contrib.go.opencensus.io/exporter/stackdriver"
-	"encoding/json"
-	"fmt"
-	"github.com/CedricFinance/slackhappy/bamboohr"
-	"github.com/CedricFinance/slackhappy/internal"
-	"github.com/nlopes/slack"
-	"go.opencensus.io/plugin/ochttp"
-	"go.opencensus.io/trace"
-	"log"
-	"net/http"
-	"os"
-	"time"
+    "bytes"
+    "context"
+    "contrib.go.opencensus.io/exporter/stackdriver"
+    "encoding/json"
+    "fmt"
+    "github.com/CedricFinance/slackhappy/internal"
+    "github.com/CedricFinance/slackhappy/workatoday"
+    "github.com/nlopes/slack"
+    "go.opencensus.io/plugin/ochttp"
+    "go.opencensus.io/trace"
+    "log"
+    "net/http"
+    "os"
+    "time"
 )
 
 type Request struct {
-	Birthdays     bool
-	Anniversaries bool
-	DryRun        bool
+    Birthdays     bool
+    Anniversaries bool
+    DryRun        bool
 }
 
 var anniversariesWisher *internal.Wisher
 var birthdaysWisher *internal.Wisher
-var employeesRepository internal.EmployeeRepository
+var employeesService *workatoday.EmployeeService
 
 var exporter *stackdriver.Exporter
 
 func MustEnv(name string) string {
-	value := os.Getenv(name)
+    value := os.Getenv(name)
 
-	if value == "" {
-		log.Panicf("The environment variable %q is not defined", name)
-	}
+    if value == "" {
+        log.Panicf("The environment variable %q is not defined", name)
+    }
 
-	return value
+    return value
 }
 
 func init() {
-	channelId := MustEnv("SLACK_CHANNEL_ID")
-	slackToken := MustEnv("SLACK_TOKEN")
-	bambooDomain := MustEnv("BAMBOOHR_DOMAIN")
-	bambooToken := MustEnv("BAMBOOHR_TOKEN")
+    channelId := MustEnv("SLACK_CHANNEL_ID")
+    slackToken := MustEnv("SLACK_TOKEN")
+    workatodayDomain := MustEnv("WORKATODAY_DOMAIN")
+    workatodayToken := MustEnv("WORKATODAY_TOKEN")
 
-	slackClient := slack.New(slackToken, slack.OptionHTTPClient(&http.Client{Transport: &ochttp.Transport{}}))
+    slackClient := slack.New(slackToken, slack.OptionHTTPClient(&http.Client{Transport: &ochttp.Transport{}}))
 
-	slackNotifier := &internal.SlackNotifier{
-		SlackClient: slackClient,
-		ChannelId:   channelId,
-	}
+    slackNotifier := &internal.SlackNotifier{
+        SlackClient: slackClient,
+        ChannelId:   channelId,
+    }
 
-	anniversariesWisher = &internal.Wisher{
-		FilterPredicate: func(employee internal.Employee, date time.Time) bool {
-			return employee.IsAnniversary(date)
-		},
-		Formatter:    internal.SimpleFormatter{Prefix: "Happy BlaBl’Anniversary to", Suffix: ":woop:!"},
-		EmptyMessage: "No anniversaries",
-		Notifier:     slackNotifier,
-	}
+    anniversariesWisher = &internal.Wisher{
+        FilterPredicate: func(employee internal.Employee, date time.Time) bool {
+            return employee.IsAnniversary(date)
+        },
+        Formatter:    internal.SeniorityFormatter{Prefix: ":woop: Happy BlaBl’Anniversary to"},
+        EmptyMessage: "No anniversaries",
+        Notifier:     slackNotifier,
+    }
 
-	birthdaysWisher = &internal.Wisher{
-		FilterPredicate: func(employee internal.Employee, date time.Time) bool {
-			return employee.HireDate.Before(date) && employee.IsBirthday(date)
-		},
-		Formatter:    internal.SimpleFormatter{Prefix: "Happy Birthday to", Suffix: ":birthday:!"},
-		EmptyMessage: "No birthdays",
-		Notifier:     slackNotifier,
-	}
+    birthdaysWisher = &internal.Wisher{
+        FilterPredicate: func(employee internal.Employee, date time.Time) bool {
+            return employee.HireDate.Before(date) && employee.IsBirthday(date)
+        },
+        Formatter:    internal.SimpleFormatter{Prefix: "Happy Birthday to", Suffix: ":birthday:!"},
+        EmptyMessage: "No birthdays",
+        Notifier:     slackNotifier,
+    }
 
-	employeesRepository = &internal.BambooRepository{
-		Client: bamboohr.New(
-			bambooDomain,
-			bambooToken,
-			bamboohr.OptionHttpClient(&http.Client{Transport: &ochttp.Transport{}}),
-		),
-	}
+    employeesService = workatoday.NewEmployeeService(
+        &workatoday.Config{BaseURL: workatodayDomain, ApiKey: workatodayToken},
+        &http.Client{Transport: &ochttp.Transport{}},
+    )
 
-	initTracing()
+    initTracing()
 }
 
 func initTracing() {
-	var err error
+    var err error
 
-	projectID := os.Getenv("GCP_PROJECT")
+    projectID := os.Getenv("GCP_PROJECT")
 
-	if projectID == "" {
-		return
-	}
+    if projectID == "" {
+        return
+    }
 
-	exporter, err = stackdriver.NewExporter(stackdriver.Options{
-		ProjectID: projectID,
-		OnError: func(err error) {
-			fmt.Printf("Exporter error: %q", err)
-		},
-	})
-	if err != nil {
-		log.Panic(err)
-	}
+    exporter, err = stackdriver.NewExporter(stackdriver.Options{
+        ProjectID: projectID,
+        OnError: func(err error) {
+            fmt.Printf("Exporter error: %q", err)
+        },
+    })
+    if err != nil {
+        log.Panic(err)
+    }
 
-	trace.RegisterExporter(exporter)
-	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
+    trace.RegisterExporter(exporter)
+    trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
 }
 
 type PubSubMessage struct {
-	Data []byte `json:"data"`
+    Data []byte `json:"data"`
 }
 
 func OnPubSubMessage(ctx context.Context, message PubSubMessage) error {
-	ctx, span := trace.StartSpan(ctx, "HappyTrigger")
-	defer span.End()
-	if exporter != nil {
-		defer exporter.Flush()
-	}
+    ctx, span := trace.StartSpan(ctx, "HappyTrigger")
+    defer span.End()
+    if exporter != nil {
+        defer exporter.Flush()
+    }
 
-	var request Request
-	decoder := json.NewDecoder(bytes.NewReader(message.Data))
-	err := decoder.Decode(&request)
-	if err != nil {
-		return err
-	}
+    var request Request
+    decoder := json.NewDecoder(bytes.NewReader(message.Data))
+    err := decoder.Decode(&request)
+    if err != nil {
+        return err
+    }
 
-	currentDate := time.Now()
-	employees := employeesRepository.List(ctx)
+    currentDate := time.Now().Add(-3 * 24 * time.Hour)
+    employees, err := employeesService.ListContext(ctx)
+    if err != nil {
+        return err
+    }
 
-	if request.Birthdays {
-		message, err := birthdaysWisher.Wish(ctx, currentDate, employees, request.DryRun)
-		if err != nil {
-			log.Print("Failed to wish birthdays")
-			return err
-		}
-		log.Printf("Today's birthdays message is: %q", message)
-	}
+    if request.Birthdays {
+        message, err := birthdaysWisher.Wish(ctx, currentDate, employees, request.DryRun)
+        if err != nil {
+            log.Print("Failed to wish birthdays")
+            return err
+        }
+        log.Printf("Today's birthdays message is: %q", message)
+    }
 
-	if request.Anniversaries {
-		message, err := anniversariesWisher.Wish(ctx, currentDate, employees, request.DryRun)
-		if err != nil {
-			log.Print("Failed to wish anniversaries")
-			return err
-		}
-		log.Printf("Today's anniversairies message is: %q", message)
-	}
+    if request.Anniversaries {
+        message, err := anniversariesWisher.Wish(ctx, currentDate, employees, request.DryRun)
+        if err != nil {
+            log.Print("Failed to wish anniversaries")
+            return err
+        }
+        log.Printf("Today's anniversairies message is: %q", message)
+    }
 
-	return nil
+    return nil
 }
