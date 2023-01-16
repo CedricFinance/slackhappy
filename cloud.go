@@ -119,7 +119,7 @@ func OnPubSubMessage(ctx context.Context, message PubSubMessage) error {
         return err
     }
 
-    currentDate := time.Now().Add(-3 * 24 * time.Hour)
+    currentDate := time.Now()
     employees, err := employeesService.ListContext(ctx)
     if err != nil {
         return err
