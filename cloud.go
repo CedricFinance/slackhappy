@@ -8,7 +8,7 @@ import (
     "fmt"
     "github.com/CedricFinance/slackhappy/internal"
     "github.com/CedricFinance/slackhappy/workatoday"
-    "github.com/nlopes/slack"
+    "github.com/slack-go/slack"
     "go.opencensus.io/plugin/ochttp"
     "go.opencensus.io/trace"
     "log"
