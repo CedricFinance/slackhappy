@@ -4,6 +4,8 @@ import (
     "context"
     "fmt"
     "github.com/CedricFinance/slackhappy/internal"
+    "github.com/avast/retry-go"
+    "log"
     "net/http"
     "time"
 )
@@ -29,9 +31,22 @@ func NewEmployeeService(c *Config, client *http.Client) *EmployeeService {
 }
 
 func (s *EmployeeService) ListContext(ctx context.Context) ([]internal.Employee, error) {
-    report, err := s.Client.GetWorkersContext(ctx, "blabla_happy")
+    var report *WorkersResponse
+
+    err := retry.Do(
+        func() error {
+            var err error
+            report, err = s.Client.GetWorkersContext(ctx, "blabla_happy")
+            return err
+        },
+        retry.Attempts(3),
+        retry.OnRetry(func(n uint, err error) {
+            log.Printf("Failed to list the workers (attempt n°%d): %v", n, err)
+        }),
+    )
+
     if err != nil {
-        return nil, fmt.Errorf("failed to get the custom report: %v", err)
+        return nil, fmt.Errorf("failed to list the workers: %v", err)
     }
 
     var result []internal.Employee
