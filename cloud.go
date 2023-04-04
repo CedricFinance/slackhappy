@@ -26,6 +26,7 @@ type Request struct {
 var anniversariesWisher *internal.Wisher
 var birthdaysWisher *internal.Wisher
 var employeesService *workatoday.EmployeeService
+var slackNotifier *internal.SlackNotifier
 
 var exporter *stackdriver.Exporter
 
@@ -41,15 +42,17 @@ func MustEnv(name string) string {
 
 func init() {
     channelId := MustEnv("SLACK_CHANNEL_ID")
+    ownerUserId := MustEnv("OWNER_USER_ID")
     slackToken := MustEnv("SLACK_TOKEN")
     workatodayDomain := MustEnv("WORKATODAY_DOMAIN")
     workatodayToken := MustEnv("WORKATODAY_TOKEN")
 
     slackClient := slack.New(slackToken, slack.OptionHTTPClient(&http.Client{Transport: &ochttp.Transport{}}))
 
-    slackNotifier := &internal.SlackNotifier{
+    slackNotifier = &internal.SlackNotifier{
         SlackClient: slackClient,
         ChannelId:   channelId,
+        OwnerId:     ownerUserId,
     }
 
     anniversariesWisher = &internal.Wisher{
@@ -122,6 +125,7 @@ func OnPubSubMessage(ctx context.Context, message PubSubMessage) error {
     currentDate := time.Now()
     employees, err := employeesService.ListContext(ctx)
     if err != nil {
+        slackNotifier.NotifyError(ctx, fmt.Sprintf("Failed to list employees for birthdays/anniversaries: %v", err))
         return err
     }
 
