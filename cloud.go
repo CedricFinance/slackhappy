@@ -40,12 +40,19 @@ func MustEnv(name string) string {
     return value
 }
 
+func SecureEnv(secureName, regularName string) string {
+    if value := os.Getenv(secureName); value != "" {
+        return value
+    }
+    return MustEnv(regularName)
+}
+
 func init() {
     channelId := MustEnv("SLACK_CHANNEL_ID")
     ownerUserId := MustEnv("OWNER_USER_ID")
-    slackToken := MustEnv("SLACK_TOKEN")
+    slackToken := SecureEnv("SECURE_SLACK_TOKEN", "SLACK_TOKEN")
     workatodayDomain := MustEnv("WORKATODAY_DOMAIN")
-    workatodayToken := MustEnv("WORKATODAY_TOKEN")
+    workatodayToken := SecureEnv("SECURE_WORKATODAY_TOKEN", "WORKATODAY_TOKEN")
 
     slackClient := slack.New(slackToken, slack.OptionHTTPClient(&http.Client{Transport: &ochttp.Transport{}}))
 
